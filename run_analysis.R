@@ -1,81 +1,50 @@
-# Part 1 & Part 2
-# Function for reading subject_train, X_train, y_train from the folder 'train'
-# and labelling and extracting the data for mean and standard deviation. 
-
-r_Data = function (fname, folder) {
-  path = file.path(folder, paste0("y_", fname, ".txt"))
-  y_data = read.table(path, header=FALSE, col.names = c("ActiviytID"))
-  
-  path = file.path(folder, paste0("subject_", fname, ".txt"))
-  subject_data = read.table(path, header=FALSE, col.names=c("SubjectID"))
-  
-  data_columns = read.table("features.txt", header=FALSE, as.is=TRUE, col.names=c("MeasureID", "MeasureName"))
-  
-  path = file.path(folder, paste0("X_", fname, ".txt"))
-  dataset = read.table(path, header=FALSE, col.names=data_columns$MeasureName)
-  
-  subset_data_columns = grep(".*mean\\(\\)|.*std\\(\\)", data_columns$MeasureName)
-  
-  dataset = dataset[, subset_data_columns]
-  
-  dataset$ActivityID = y_data$ActivityID
-  dataset$SubjectID = subject_data$SubjectID
-  
-  dataset
+## Getting and Cleaning Data, Week 4 Assignment
+## Create function 'run_analysis.R'
+run_analysis3 <- function(){
+        # call dplyr library
+        library(dplyr)
+        # set working directory
+        setwd("~/R/spec_Data/week4_data/week4project/zipdir/UCI HAR Dataset")
+        # read tables 
+        activity_labels <- read.table("activity_labels.txt", quote="\"", col.names=c("actID","actlab"))
+        features <- read.table("features.txt", 	quote="\"", col.names=c("colID","featurelab"))
+        
+        subject_test <- read.table("test/subject_test.txt", quote="\"",col.names="subjID")
+        x_test <- read.table("test/X_test.txt",  quote="\"")
+        names(x_test) <- features$featurelab
+        y_test <- read.table("test/y_test.txt", quote="\"", col.names="actID")
+        
+        subject_train <- read.table("train/subject_train.txt", quote="\"", col.names="subjID")
+        x_train <- read.table("train/X_train.txt", quote="\"")
+        names(x_train) <- features$featurelab
+        y_train <- read.table("train/y_train.txt", quote="\"", col.names="actID")
+        
+        # merge test and train data
+        # combine subject info, accelerometer data and activity data columns
+        testdata <- cbind(subject_test, y_test, x_test)  
+        traindata <- cbind(subject_train, y_train, x_train)
+        
+        # combine test and train by rows
+        alldata <- rbind(testdata, traindata)
+                
+        # extract mean and sd data columns        
+        # eliminate columns whose names are duplicated to avoid error with 'select'
+        alldata <- alldata[, !duplicated(colnames(alldata))]
+        # columns of interest (coi) = those with key words and the activity and subject id fields
+        coi <- select(alldata, actID, subjID, contains("mean"), contains("Mean"), contains("std"))
+        
+        # create new df with aggregated means    
+        avedata <- aggregate(coi, by= list(coi$subjID,coi$actID),mean)[,c(-1,-2)]
+        
+        # provide descriptive names for activities
+        tidy <- merge(avedata, activity_labels, by='actID')
+       # reorganize columns
+        tidy <- tidy[,c(1,89,2:88)]
+        # improve variable names
+        tidy <- rename(tidy, "activityID" = actID)
+        tidy <- rename(tidy, "activity" = actlab)
+        tidy <- rename(tidy, "subjectID" = subjID)
+        
+        # write to file
+        write.csv(tidy, file= "tidyData.csv")
 }
-
-# reading the test dataset
-read_test_data = function() {
-  r_Data("test", "test")
-}
-
-# reading the train dataset
-read_train_data = function () {
-  r_Data("train", "train")
-}
-
-# merging the two datasets and giving proper column names
-mergeDataset = function () {
-  dataset = rbind(read_test_data(), read_train_data())
-  cnames = colnames(dataset)
-  cnames = gsub("\\.+mean\\.+", cnames, replacement = "Mean")
-  cnames = gsub("\\.+std\\.+", cnames, replacement = "Std")
-  colnames(dataset) = cnames
-  dataset
-}
-
-# Part 3 & Part 4
-# Reading the activity labels and creating a column for activity labels 
-activityLabels = function (dataset) {
-  activity_labels = read.table("activity_labels.txt", header = FALSE, as.is=TRUE, col.names = c("ActivityID", "ActivityName"))
-  activity_labels$ActivityName = as.factor(activity_labels$ActivityName)
-  data_labels = merge(dataset, activity_labels)
-  data_labels
-}
-
-# merging the activity labels to the merged dataset
-merge_label_data = function () {
-  activityLabels(mergeDataset())
-}
-
-# Part 5
-# Creating a second, independent tidy data set with the average of each variable for each activity and each subject. 
-tidyData = function(merge_label_data) {
-  library(reshape2)
-  
-  vars = c("ActivityID", "ActivityName", "SubjectID")
-  measure_vars = setdiff(colnames(merge_label_data), vars)
-  melted_data <- melt(merge_label_data, id=vars, measure.vars=measure_vars)
-  
-  # recast 
-  dcast(melted_data, ActivityName + SubjectID ~ variable, mean)
-}
-
-#Getting the clean tidy dataset
-tidy_datafile =function(fname){
-  tidy_data = tidyData(merge_label_data())
-  write.table(tidy_data, fname)
-}
-
-tidy_datafile("tidy.txt")
-
